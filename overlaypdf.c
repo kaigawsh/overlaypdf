@@ -13,6 +13,7 @@
 #include <stdio.h>
 
 #define MAX_PARAM_LENGTH 256
+#define MAX_PAGE_INDEX_LENGTH 16
 
 enum {
 	SUCCESS = 0,
@@ -38,11 +39,33 @@ gchar *getAbsoluteFileName(const gchar *fileName)
 }
 // End theft from ePDFview
 
+int getPageIndex(const char* filePath) {
+	char *p = NULL;
+	char *end;
+	char pageIndexStr[MAX_PAGE_INDEX_LENGTH+1];
+	int i=0;
+	long num;
+	
+	memset(pageIndexStr,0,sizeof(pageIndexStr));
+	p = strstr(filePath,"#page=");
+	if(p == NULL) return 0;
+	strncpy(pageIndexStr,p+6,MAX_PAGE_INDEX_LENGTH);
+	num = strtol(pageIndexStr,&end,10);
+	if (*end != '\0') {
+		return 0;	// エラーの場合は1ページ目とする
+	}
+	if(num < 1) {	// ページ数は1オリジン、pageIndexは0オリジンのため、1以上ない場合のエラー処理
+		return 0;
+	}
+	return (int)(num-1);
+}
+
 int createOverlayPdf(const gchar *pdfParamsName , const char* outputFilename)
 {
 	char tag[MAX_PARAM_LENGTH+1];
 	char value[MAX_PARAM_LENGTH+1];
 	char filePath[MAX_PARAM_LENGTH+1];
+	char s3FilePath[MAX_PARAM_LENGTH+1];
 	FILE* fp;
 	double pageWidth = 0;
 	double pageHeight = 0;
@@ -74,12 +97,15 @@ int createOverlayPdf(const gchar *pdfParamsName , const char* outputFilename)
 	unsigned char hasOpacity = FALSE;
 	unsigned char hasTranslate = FALSE;
 	unsigned char hasRotate = FALSE;
+	unsigned char hasS3FilePath = FALSE;
 	double pdfScale = 0;
 	char *p = NULL;
+	int pageIndex = 0;	
 
 	memset(tag,0,sizeof(tag));
 	memset(value,0,sizeof(value));
 	memset(filePath,0,sizeof(filePath));
+	memset(s3FilePath,0,sizeof(s3FilePath));
 	fp = fopen(pdfParamsName,"r");
 
 	while(fgets(tag,MAX_PARAM_LENGTH,fp) != NULL){
@@ -117,6 +143,13 @@ int createOverlayPdf(const gchar *pdfParamsName , const char* outputFilename)
 				strcpy(filePath,value);
 				p = strchr(filePath,'\n');
 				if(p != NULL) (*p) = '\0';
+				p = strstr(filePath,"#page=");
+				if(p != NULL) {
+					pageIndex = getPageIndex(filePath);
+					*p = '\0';	// #以降を上書きする
+				} else {
+					pageIndex = 0;
+				}
 				hasFilePath = TRUE;
 			} else if(strcmp(tag,"##Background\n") == 0) {
 				ret = sscanf(value,"%d",&isBackground);
@@ -137,6 +170,12 @@ int createOverlayPdf(const gchar *pdfParamsName , const char* outputFilename)
 				hasRotate = TRUE;
 				rotateBaseX *= scale;
 				rotateBaseY *= scale;
+			} else if(strcmp(tag,"##S3FilePath\n") == 0) {
+				ret = sscanf(value,"%s",s3FilePath);
+				strcpy(s3FilePath,value);
+				p = strchr(s3FilePath,'\n');
+				if(p != NULL) (*p) = '\0';
+				hasS3FilePath = TRUE;
 			} else {
 				printf("Unknown Tag Appeared!\n");
 				return ERROR_UNKNOWN_TAG;
@@ -159,9 +198,10 @@ int createOverlayPdf(const gchar *pdfParamsName , const char* outputFilename)
 					hasOpacity = FALSE;
 					hasTranslate = FALSE;
 					hasRotate = FALSE;
+					hasS3FilePath = FALSE;
 					continue;
 				}
-				popplerPage = poppler_document_get_page(popplerDoc, 0);
+				popplerPage = poppler_document_get_page(popplerDoc, pageIndex);
 				poppler_page_get_size (popplerPage, &pdfWidth, &pdfHeight);
 
 				if (hasBackground) {
@@ -218,6 +258,7 @@ int createOverlayPdf(const gchar *pdfParamsName , const char* outputFilename)
 				hasOpacity = FALSE;
 				hasTranslate = FALSE;
 				hasRotate = FALSE;
+				hasS3FilePath = FALSE;
 			}
 		}
 	}
