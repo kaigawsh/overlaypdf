@@ -83,6 +83,8 @@ int createOverlayPdf(const gchar *pdfParamsName , const char* outputFilename)
 	int isBackground;
 	double layerWidth = 0;
 	double layerHeight = 0;
+	double canvasWidth = 0;
+	double canvasHeight = 0;
 	double pdfWidth = 0;
 	double pdfHeight = 0;
 	double opacity = 0;
@@ -146,7 +148,7 @@ int createOverlayPdf(const gchar *pdfParamsName , const char* outputFilename)
 				p = strstr(filePath,"#page=");
 				if(p != NULL) {
 					pageIndex = getPageIndex(filePath);
-					*p = '\0';	// #以降を上書きする
+					*p = '\0';
 				} else {
 					pageIndex = 0;
 				}
@@ -204,16 +206,25 @@ int createOverlayPdf(const gchar *pdfParamsName , const char* outputFilename)
 				popplerPage = poppler_document_get_page(popplerDoc, pageIndex);
 				poppler_page_get_size (popplerPage, &pdfWidth, &pdfHeight);
 
+				if (layerWidth != 0 && layerHeight != 0) {
+					canvasWidth = layerWidth;
+					canvasHeight = layerHeight;
+				} else {
+					canvasWidth = originalWidth;
+					canvasHeight = originalHeight;
+				}
+
 				if (hasBackground) {
-					if (pdfWidth * pageHeight <= pdfHeight * pageWidth) {
-						pdfScale = pageHeight / pdfHeight;
+					if (pdfWidth * canvasHeight <= pdfHeight * canvasWidth) {
+						pdfScale = canvasHeight / pdfHeight;
 					} else {
-						pdfScale = pageWidth / pdfWidth;
+						pdfScale = canvasWidth / pdfWidth;
 					}
 				} else {
 					pdfScale = 1;
 				}
-				
+				pdfScale *= scale;
+
 				surfaceLayer = cairo_pdf_surface_create(NULL, pageWidth, pageHeight);
 				if (cairo_surface_status(surfaceLayer) !=  CAIRO_STATUS_SUCCESS) {
 					return ERROR_CAIRO_STATUS;
@@ -259,6 +270,10 @@ int createOverlayPdf(const gchar *pdfParamsName , const char* outputFilename)
 				hasTranslate = FALSE;
 				hasRotate = FALSE;
 				hasS3FilePath = FALSE;
+				layerWidth = 0;
+				layerWidth = 0;
+				canvasWidth = 0;
+				canvasHeight = 0;
 			}
 		}
 	}
