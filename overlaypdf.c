@@ -102,7 +102,8 @@ int createOverlayPdf(const gchar *pdfParamsName , const char* outputFilename)
 	unsigned char hasS3FilePath = FALSE;
 	double pdfScale = 0;
 	char *p = NULL;
-	int pageIndex = 0;	
+	int pageIndex = 0;
+	int s3PathPageIndex = 0;
 
 	memset(tag,0,sizeof(tag));
 	memset(value,0,sizeof(value));
@@ -177,6 +178,13 @@ int createOverlayPdf(const gchar *pdfParamsName , const char* outputFilename)
 				strcpy(s3FilePath,value);
 				p = strchr(s3FilePath,'\n');
 				if(p != NULL) (*p) = '\0';
+				p = strstr(s3FilePath,"#page=");
+				if(p != NULL) {
+					s3PathPageIndex = getPageIndex(s3FilePath);
+					*p = '\0';
+				} else {
+					s3PathPageIndex = 0;
+				}
 				hasS3FilePath = TRUE;
 			} else {
 				printf("Unknown Tag Appeared!\n");
@@ -186,6 +194,7 @@ int createOverlayPdf(const gchar *pdfParamsName , const char* outputFilename)
 			if (strcmp(tag,"#PDFParamsStart\n") == 0) {
 				// do nothing
 			} else if(strcmp(tag,"#PDFParamsEnd\n") == 0) {
+				int pdfDocNum = 0;
 				if (!hasFilePath || !hasBackground || !hasOpacity) return ERROR_LACK_OF_TAG_INFORMATION;
 				gchar *absoluteFileName = getAbsoluteFileName(filePath);
 				gchar *filename_uri = g_filename_to_uri(absoluteFileName, NULL, NULL);
@@ -202,6 +211,12 @@ int createOverlayPdf(const gchar *pdfParamsName , const char* outputFilename)
 					hasRotate = FALSE;
 					hasS3FilePath = FALSE;
 					continue;
+				}
+				pdfDocNum = poppler_document_get_n_pages(popplerDoc);
+				if (pdfDocNum > 1) {
+					if (hasS3FilePath == TRUE && pdfDocNum  > s3PathPageIndex && s3PathPageIndex > 0 ) {
+						pageIndex = s3PathPageIndex;
+					}
 				}
 				popplerPage = poppler_document_get_page(popplerDoc, pageIndex);
 				poppler_page_get_size (popplerPage, &pdfWidth, &pdfHeight);
